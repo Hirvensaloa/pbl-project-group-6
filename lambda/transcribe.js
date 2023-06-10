@@ -8,7 +8,6 @@ const config = {
   REGION: process.env.AWS_REGION,
   BUCKET_NAME: process.env.BUCKET_NAME,
 };
-
 export const handler = async (event) => {
   console.log(event);
 
@@ -72,6 +71,9 @@ const uploadAudio = async (filename, bucketname, file) => {
 
 // Start transcribe job for a specific audio file in s3 bucket
 const startTranscribeJob = async (filename, languageCode) => {
+
+const startTranscribeJob = async (filename) => {
+
   // Create an Amazon Transcribe service client object.
   const transcribeClient = new TranscribeClient({ region: config.REGION });
   const fileUri = `https://${config.BUCKET_NAME}.s3-${config.REGION}.amazonaws.com/${filename}`;

@@ -28,6 +28,7 @@ export const handler = async (event) => {
   const uri = res.TranscriptionJob.Transcript.TranscriptFileUri;
 
   console.log('Downloading from uri', uri, res);
+
   const { transcript, sourceLanguage, targetLanguage } =
     await downloadTranscript(uri);
   console.log('transcript', transcript);
@@ -107,6 +108,7 @@ const translate = async (text, sourceLanguage, targetLanguage) => {
 
   return response.TranslatedText;
 };
+
 
 const synthesizeSpeech = async (text, languageCode) => {
   const client = new PollyClient({ region: config.REGION });
