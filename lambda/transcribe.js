@@ -8,9 +8,6 @@ const config = {
   REGION: process.env.AWS_REGION,
   BUCKET_NAME: process.env.BUCKET_NAME,
 };
-
-// Deployed from GitHub Action
-
 export const handler = async (event) => {
   console.log(event);
 
@@ -19,16 +16,21 @@ export const handler = async (event) => {
   // Decode base64 string to binary
   const decoded = Buffer.from(encoded, 'base64');
 
+  // Extract X-Source-Language header which contains the source language
+  const sourceLanguage = event.headers['x-source-language'];
+  // Extract X-Target-Language header which contains the target language
+  const targetLanguage = event.headers['x-target-language'];
+
   try {
     // Create file title with timestamp
     const timestamp = Date.now();
-    const filename = `speech-${timestamp}.mp3`;
+    const filename = `speech-${timestamp}.${sourceLanguage}.${targetLanguage}.ogx`;
 
     // Upload mp3 file to S3
     await uploadAudio(filename, config.BUCKET_NAME, decoded);
 
     // Start the transcribtion job
-    await startTranscribeJob(filename);
+    await startTranscribeJob(filename, sourceLanguage);
 
     const response = {
       statusCode: 200,
@@ -68,7 +70,10 @@ const uploadAudio = async (filename, bucketname, file) => {
 };
 
 // Start transcribe job for a specific audio file in s3 bucket
+const startTranscribeJob = async (filename, languageCode) => {
+
 const startTranscribeJob = async (filename) => {
+
   // Create an Amazon Transcribe service client object.
   const transcribeClient = new TranscribeClient({ region: config.REGION });
   const fileUri = `https://${config.BUCKET_NAME}.s3-${config.REGION}.amazonaws.com/${filename}`;
@@ -76,12 +81,12 @@ const startTranscribeJob = async (filename) => {
 
   const params = {
     TranscriptionJobName: jobName,
-    MediaFormat: 'mp3',
+    MediaFormat: 'ogg',
     Media: {
       MediaFileUri: fileUri,
     },
     OutputBucketName: config.BUCKET_NAME,
-    IdentifyLanguage: true, // Identify the language automatically
+    LanguageCode: languageCode,
   };
 
   await transcribeClient.send(new StartTranscriptionJobCommand(params));

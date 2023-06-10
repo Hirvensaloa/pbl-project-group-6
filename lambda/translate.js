@@ -15,12 +15,10 @@ import {
 } from '@aws-sdk/client-polly';
 
 const config = {
-  REGION: 'ap-northeast-1',
-  BUCKET_NAME: 'voice-app-bucket',
-  MEDIA_FORMAT: 'mp3',
+  REGION: process.env.AWS_REGION,
+  BUCKET_NAME: process.env.BUCKET_NAME,
+  MEDIA_FORMAT: process.env.MEDIA_FORMAT,
 };
-
-// Deployed from GitHub Action
 
 export const handler = async (event) => {
   console.log(event);
@@ -30,15 +28,20 @@ export const handler = async (event) => {
   const uri = res.TranscriptionJob.Transcript.TranscriptFileUri;
 
   console.log('Downloading from uri', uri, res);
-  const { transcript, languageCode } = await downloadTranscript(uri);
+
+  const { transcript, sourceLanguage, targetLanguage } =
+    await downloadTranscript(uri);
   console.log('transcript', transcript);
 
-  const translatedText = await translate(transcript, languageCode, 'zh-TW');
+  const translatedText = await translate(
+    transcript,
+    sourceLanguage,
+    targetLanguage
+  );
 
   console.log('Translation', translatedText);
 
-  // TODO: Take the language code from the event
-  await synthesizeSpeech('cmn-CN', translatedText);
+  await synthesizeSpeech(translatedText, targetLanguage);
 
   const response = {
     statusCode: 200,
@@ -52,6 +55,11 @@ const downloadTranscript = async (uri) => {
 
   // Get the file name from uri
   const filename = uri.split('/').pop();
+
+  //Read the source language from the filename
+  const sourceLanguage = filename.split('.')[1];
+  // Read the target language from the filename
+  const targetLanguage = filename.split('.')[2];
 
   const params = {
     Bucket: config.BUCKET_NAME,
@@ -69,9 +77,8 @@ const downloadTranscript = async (uri) => {
   const { results } = await consumers.json(response.Body);
 
   const transcript = results.transcripts[0].transcript;
-  const languageCode = results.language_code;
 
-  return { transcript, languageCode };
+  return { transcript, sourceLanguage, targetLanguage };
 };
 
 const getTranscriptionJob = async (jobName) => {
@@ -102,20 +109,28 @@ const translate = async (text, sourceLanguage, targetLanguage) => {
   return response.TranslatedText;
 };
 
-const synthesizeSpeech = async (languageCode, text) => {
+
+const synthesizeSpeech = async (text, languageCode) => {
   const client = new PollyClient({ region: config.REGION });
 
   const { Voices } = await client.send(
-    new DescribeVoicesCommand({ LanguageCode: languageCode })
+    new DescribeVoicesCommand({ Engine: 'standard' })
   );
-  const voiceId = Voices[0].Id;
+
+  // Taiwanese Mandarin is not supported by Polly. So use Mandarin instead.
+  const matchingLanguageCode =
+    languageCode === 'zh-TW' ? 'cmn-CN' : languageCode;
+
+  const voice =
+    Voices.find((voice) => voice.LanguageCode === matchingLanguageCode) ??
+    Voices[0];
+  const voiceId = voice.Id;
 
   const timestamp = Date.now();
   const filename = `translation-${timestamp}.mp3`;
   const input = {
     // StartSpeechSynthesisTaskInput
     Engine: 'standard',
-    LanguageCode: languageCode,
     OutputFormat: config.MEDIA_FORMAT,
     OutputS3BucketName: config.BUCKET_NAME,
     OutputS3KeyPrefix: filename,
