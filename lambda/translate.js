@@ -1,5 +1,9 @@
 import consumers from 'node:stream/consumers';
-import { S3Client, GetObjectCommand } from '@aws-sdk/client-s3';
+import {
+  S3Client,
+  GetObjectCommand,
+  PutObjectCommand,
+} from '@aws-sdk/client-s3';
 import {
   GetTranscriptionJobCommand,
   TranscribeClient,
@@ -10,14 +14,21 @@ import {
 } from '@aws-sdk/client-translate';
 import {
   PollyClient,
-  StartSpeechSynthesisTaskCommand,
+  SynthesizeSpeechCommand,
   DescribeVoicesCommand,
 } from '@aws-sdk/client-polly';
+import {
+  IoTDataPlaneClient,
+  PublishCommand,
+} from '@aws-sdk/client-iot-data-plane';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 
+// Set this in the Lambda environment variables
 const config = {
   REGION: process.env.AWS_REGION,
   BUCKET_NAME: process.env.BUCKET_NAME,
   MEDIA_FORMAT: process.env.MEDIA_FORMAT,
+  TOPIC: process.env.TOPIC,
 };
 
 export const handler = async (event) => {
@@ -137,7 +148,69 @@ const synthesizeSpeech = async (text, languageCode) => {
     VoiceId: voiceId,
   };
 
-  const command = new StartSpeechSynthesisTaskCommand(input);
+  const command = new SynthesizeSpeechCommand(input);
   const response = await client.send(command);
+
   console.log('response', response);
+
+  const iotClient = new IoTDataPlaneClient();
+
+  const audioStream = response.AudioStream;
+  // Convert the audio stream to mp3
+  const audioBuffer = await consumers.arrayBuffer(audioStream);
+
+  const outputFilename = `output-${timestamp}.mp3`;
+
+  // Upload the bucket to s3, as mqtt supports only 128kB payload which is enough for short audio files but not longer ones.
+  // Next improvement would be to implement Mqtt file transfer to avoid overhead of uploading to s3.
+  await uploadToS3(outputFilename, audioBuffer);
+
+  // Get a presigned url for the file and send it to the device using Mqtt
+  const signedUrl = await getPresignUrl(outputFilename);
+
+  const message = {
+    url: signedUrl,
+  };
+
+  const iotInput = {
+    topic: config.TOPIC, // required,
+    contentType: 'application/json',
+    payload: JSON.stringify(message),
+  };
+  console.log('iotInput', iotInput);
+
+  const iotCommand = new PublishCommand(iotInput);
+  await iotClient.send(iotCommand);
+};
+
+const uploadToS3 = async (filename, file) => {
+  const client = new S3Client();
+
+  const input = {
+    Key: filename,
+    Body: file,
+    Bucket: config.BUCKET_NAME,
+    ContentType: 'text/plain',
+  };
+
+  const command = new PutObjectCommand(input);
+  const response = await client.send(command);
+  console.log(response);
+
+  if (response['$metadata'].httpStatusCode !== 200) {
+    throw new Error('Error uploading file to S3');
+  }
+};
+
+const getPresignUrl = async (filename) => {
+  const client = new S3Client({ region: config.REGION });
+
+  const params = {
+    Bucket: config.BUCKET_NAME,
+    Key: filename,
+  };
+
+  const command = new GetObjectCommand(params);
+  const url = await getSignedUrl(client, command, { expiresIn: 3600 });
+  return url;
 };

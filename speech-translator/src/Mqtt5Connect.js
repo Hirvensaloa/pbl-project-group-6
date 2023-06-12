@@ -71,13 +71,6 @@ function createClient(provider) {
     log('Error event: ' + error.toString());
   });
 
-  client.on('messageReceived', (eventData) => {
-    log('Message Received event: ' + JSON.stringify(eventData.message));
-    if (eventData.message.payload) {
-      log('  with payload: ' + toUtf8(eventData.message.payload));
-    }
-  });
-
   client.on('attemptingConnect', (eventData) => {
     log('Attempting Connect event');
   });
@@ -106,22 +99,7 @@ function createClient(provider) {
   return client;
 }
 
-async function connect() {
-  log('Provider setup...');
-  /** Set up the credentialsProvider */
-  const provider = new AWSCognitoCredentialsProvider({
-    IdentityPoolId: Settings.AWS_COGNITO_IDENTITY_POOL_ID,
-    Region: Settings.AWS_REGION,
-  });
-
-  log('Fetching credentials...');
-  /** Make sure the credential provider fetched before setup the connection */
-  await provider.refreshCredentials();
-
-  let client = createClient(provider);
-
-  log('Client created, attempting connection...');
-
+export async function connect(setLoading) {
   const attemptingConnect = once(client, 'attemptingConnect');
   const connectionSuccess = once(client, 'connectionSuccess');
 
@@ -135,16 +113,16 @@ async function connect() {
   });
   log('Suback result: ' + JSON.stringify(suback));
 
-  client.on('messageReceived', (eventData) => {
+  client.on('messageReceived', async (eventData) => {
     log('Message Received event: ' + JSON.stringify(eventData.message));
     if (eventData.message.payload) {
-      log('  with payload: ' + toUtf8(eventData.message.payload));
-
       // Convert the string to JSON
       const eventDataJson = JSON.parse(toUtf8(eventData.message.payload));
       const url = eventDataJson.url;
 
       console.log('Fetching from url', url);
+
+      setLoading(false);
 
       // Download mp3 file from url and play it
       const audio = new Audio(url);
@@ -153,9 +131,17 @@ async function connect() {
   });
 }
 
-async function main() {
-  console.log('Running the main func');
-  await connect();
-}
+log('Provider setup...');
+/** Set up the credentialsProvider */
+const provider = new AWSCognitoCredentialsProvider({
+  IdentityPoolId: Settings.AWS_COGNITO_IDENTITY_POOL_ID,
+  Region: Settings.AWS_REGION,
+});
 
-main();
+log('Fetching credentials...');
+/** Make sure the credential provider fetched before setup the connection */
+await provider.refreshCredentials();
+
+let client = createClient(provider);
+
+log('Client created, attempting connection...');

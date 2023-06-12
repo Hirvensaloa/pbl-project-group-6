@@ -4,6 +4,7 @@ import {
   TranscribeClient,
 } from '@aws-sdk/client-transcribe';
 
+// Set this in the Lambda environment variables
 const config = {
   REGION: process.env.AWS_REGION,
   BUCKET_NAME: process.env.BUCKET_NAME,
@@ -77,7 +78,7 @@ const startTranscribeJob = async (filename, languageCode) => {
   const fileUri = `https://${config.BUCKET_NAME}.s3-${config.REGION}.amazonaws.com/${filename}`;
   const jobName = `audio-transcription-job-${filename}`;
 
-  const params = {
+  const initParams = {
     TranscriptionJobName: jobName,
     MediaFormat: 'ogg',
     Media: {
@@ -86,6 +87,17 @@ const startTranscribeJob = async (filename, languageCode) => {
     OutputBucketName: config.BUCKET_NAME,
     LanguageCode: languageCode,
   };
+
+  const params =
+    languageCode === 'detect'
+      ? {
+          ...initParams,
+          IdentifyLanguage: true,
+        }
+      : {
+          ...initParams,
+          LanguageCode: languageCode,
+        };
 
   await transcribeClient.send(new StartTranscriptionJobCommand(params));
 };
