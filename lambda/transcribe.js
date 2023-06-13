@@ -85,11 +85,10 @@ const startTranscribeJob = async (filename, languageCode) => {
       MediaFileUri: fileUri,
     },
     OutputBucketName: config.BUCKET_NAME,
-    LanguageCode: languageCode,
   };
 
   const params =
-    languageCode === 'detect'
+    languageCode === 'auto'
       ? {
           ...initParams,
           IdentifyLanguage: true,

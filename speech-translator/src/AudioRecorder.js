@@ -37,7 +37,7 @@ const availableLanguages = {
   English: 'en-US',
   Chinese: 'zh-TW',
   Italian: 'it-IT',
-  Detect: 'detect', // Indicates that language will be detected automatically
+  Detect: 'auto', // Indicates that language will be detected automatically
 };
 
 export default function AudioRecord() {
